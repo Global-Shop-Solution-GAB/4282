@@ -1,0 +1,372 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Function.Intrinsic.Debug.SetScriptVersion("1.0.94","True")
+Variable.Global.sLog.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'enm
+'Created for Vanco
+'6/15/11 -  SMC: Changed to run off of 28870, JB0075GI-IHIST-HOOK.  This has job, suffix and part/heat/lot/bin/serial of any issued material
+'November 2016. FEQ: Changed to run from the Lot/Bin Ok hook
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+'screen JB0075GI
+'F.Intrinsic.Control.If(V.Caller.Hook,=,28840)
+'	F.Intrinsic.Control.CallSub(MTR_old)
+'F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,28842)
+'	F.Intrinsic.Control.CallSub(mtr_old)
+F.Intrinsic.Control.If(V.Caller.Hook, =, 32913)
+	F.Intrinsic.Control.CallSub(passwo)
+F.Intrinsic.Control.EndIf
+
+'F.Intrinsic.Control.If(V.Caller.Hook,=,28870)
+'	F.Intrinsic.Control.CallSub(Mtr)
+'F.Intrinsic.Control.EndIf
+F.ODBC.Connection!con.Close
+F.Intrinsic.Control.End
+
+Program.Sub.Main.End
+
+Program.Sub.MTR.Start
+V.Local.iLID.Declare(Long)
+V.Local.iWOID.Declare(Long)
+V.Local.sKey.Declare(String)
+V.Local.sPart.Declare(String)
+V.Local.sRev.Declare(String)
+V.Local.sLoc.Declare(String)
+V.Local.sSeq.Declare(String)
+V.Local.sBin.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sLot.Declare(String)
+V.Local.sHeat.Declare(String)
+V.Local.sSerial.Declare(String)
+V.Local.sWO.Declare(String)
+V.Local.sWOSuf.Declare(String)
+V.Local.bRet.Declare(Boolean)
+V.Local.sWOKey.Declare(String)
+V.Local.iGrp.Declare(Long)
+V.Local.sLog.Declare(String)
+F.Intrinsic.UI.InvokeWaitDialog("Copying Item Links to WO","Copying")
+F.Intrinsic.Control.CallSub(Log,"sText","Starting the Process to copy Lot Bin to WO","bFirst",True)
+F.Intrinsic.Control.CallSub(Log,"sText","Version 1","bFirst",False)
+'get information passed from the screen
+F.Intrinsic.String.RPad(V.Passed.009000," ",20,V.Local.sPart)
+F.Intrinsic.String.RPad(V.Passed.009001," ",2,V.Local.sLoc)
+F.Intrinsic.String.RPad(V.Passed.009007," ",15,V.Local.sLot)
+F.Intrinsic.String.RPad(V.Passed.009008," ",6,V.Local.sBin)
+F.Intrinsic.String.RPad(V.Passed.009009," ",15,V.Local.sHeat)
+F.Intrinsic.String.RPad(V.Passed.009010," ",30,V.Local.sSerial)
+
+'concat the key for the Link Lookup of the Lot/Bin
+F.Intrinsic.String.Concat(V.Local.sPart,V.Local.sLoc,V.Local.sLot,V.Local.sBin,V.Local.sHeat,V.Local.sSerial,V.Local.sKey)
+F.Intrinsic.String.Trim(V.Local.sKey,V.Local.sKey)
+F.Intrinsic.String.Concat("Lot_Bin Key=",V.Local.sKey,V.Local.sLog)
+F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+F.Global.DocumentControl.CreateReference(V.Local.sKey,31,V.Local.iLID)
+'concat the key for the WO Link
+F.Intrinsic.String.RPad(V.Passed.009004," ",6,V.Local.sWOKey)
+F.Intrinsic.String.Concat(V.Local.sWOKey,V.Passed.009005,V.Local.sWOKey)
+F.Intrinsic.String.Trim(V.Local.sWOKey,V.Local.sWOKey)
+F.Intrinsic.String.Concat("WO Key=",V.Local.sWOKey,V.Local.sLog)
+F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+F.Global.DocumentControl.CreateReference(V.Local.sWOKey,20,V.Local.iWOID)
+'copy the information from the Lot/Bin Link to the WO link
+F.Intrinsic.Debug.SetLA("Copying links from Link ID ",V.Local.iLID,"(",V.Local.sKey,") to Link ID ",V.Local.iWOID,"(",V.Local.sWOKey,")")
+F.Global.DocumentControl.Copy(V.Local.iLID,V.Local.iWOID,V.Local.bRet)
+F.Intrinsic.Control.CallSub(Log,"sText","Copied Lot/Bin to WO","bFirst",False)
+'lookup group
+F.Intrinsic.String.Concat("Select GRP_ID from ATG_DOC_GRP where GRP_Name='","MANUFACTURING REPORT","'",V.Local.sSQL)
+F.ODBC.Connection!con.OpenRecordsetRO("rstGrp",V.Local.sSQL)
+F.Intrinsic.Control.If(V.ODBC.con!rstGrp.EOF,=,False)
+'update group in the database
+	V.Local.iGrp.Set(V.ODBC.con!rstGrp.FieldVal!GRP_ID)
+	F.Intrinsic.String.Concat("Update ATG_DOC_ASSOC set GRP_ID=",V.Local.iGrp," where Link_ID=",V.Local.iWOID,"",V.Local.sSQL)
+	f.ODBC.Connection!con.Execute(V.Local.sSQL)
+F.Intrinsic.Control.EndIf
+F.ODBC.con!rstGrp.Close
+'F.Intrinsic.Control.If(V.Local.bRet,<>,True)
+'	F.Intrinsic.String.Concat("Unsuccessful in copying Lot/Bin to Work Order Links.",V.Ambient.NewLine,"Lot/Bin link key: ",V.Local.sKey,V.Ambient.NewLine,"WO link key: ",V.Local.sWOKey,V.Local.sPart)
+'	F.Intrinsic.UI.Msgbox(V.Local.sPart)
+'F.Intrinsic.Control.EndIf
+F.Intrinsic.UI.CloseWaitDialog
+
+Program.Sub.MTR.End
+
+Program.Sub.Log.Start
+
+V.Local.iHdl.Declare(Long)
+V.Local.sFile.Declare(String)
+V.Local.sLine.Declare(String)
+F.Intrinsic.File.GetHandle(V.Local.iHdl)
+F.Intrinsic.String.Concat(V.Caller.FilesDir,"\MTR_Link.log",V.Local.sFile)
+'F.Intrinsic.UI.Msgbox(V.Local.sFile)
+F.Intrinsic.Control.If(V.Args.bFirst,=,"True")
+	F.Intrinsic.File.OpenForWrite(V.Local.sFile,V.Local.iHdl)
+F.Intrinsic.Control.Else
+	F.Intrinsic.File.OpenForAppend(V.Local.sFile,V.Local.iHdl)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.String.Concat(V.Global.sLog,V.Ambient.NewLine,V.Ambient.Now,V.Ambient.Tab,V.Args.sText,V.Global.sLog)
+F.Intrinsic.String.Concat(V.Ambient.NewLine,V.Ambient.Now,V.Ambient.Tab,V.Args.sText,V.local.sLine)
+
+F.Intrinsic.File.WriteLine(V.Local.iHdl,V.local.sLine)
+
+F.Intrinsic.File.CloseFile(V.Local.iHdl)
+
+Program.Sub.Log.End
+
+Program.Sub.MTR_old.Start
+V.Local.iLID.Declare(Long)
+V.Local.iWOID.Declare(Long)
+V.Local.sKey.Declare(String)
+V.Local.iBDFID.Declare(Long)
+V.Local.iRow.Declare(Long)
+V.Local.sName.Declare(String)
+V.Local.sRow.Declare(String)
+V.Local.iLine.Declare(Long)
+V.Local.sPart.Declare(String)
+V.Local.sRev.Declare(String)
+V.Local.sLoc.Declare(String)
+V.Local.sSeq.Declare(String)
+V.Local.sBin.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sLot.Declare(String)
+V.Local.sHeat.Declare(String)
+V.Local.sSerial.Declare(String)
+V.Local.sWO.Declare(String)
+V.Local.sWOSuf.Declare(String)
+V.Local.bRet.Declare(Boolean)
+V.Local.sWOKey.Declare(String)
+V.Local.iGrp.Declare(Long)
+V.Local.sLog.Declare(String)
+Variable.Local.sDate.Declare(String)
+Variable.Local.sMess.Declare(String)
+
+Variable.Local.sDate.Set(Variable.Ambient.Date.FormatYYMMDD)
+'F.Intrinsic.Debug.InvokeDebugger
+V.Local.sName.Set("Issue")
+F.Intrinsic.Control.CallSub(Log,"sText","Starting the Process to copy Lot Bin to WO","bFirst",True)
+F.Intrinsic.Control.CallSub(Log,"sText","Version 1","bFirst",False)
+'get information passed from the screen
+F.Intrinsic.Control.CallSub(Log,"sText",V.Passed.AUX001,"bFirst",False)
+F.Intrinsic.BDF.Load(V.Local.sName,"AUX001")
+F.Intrinsic.Control.CallSub(Log,"sText","BDF File has been loaded","bFirst",False)
+V.Local.sWO.Set(V.Passed.000002)
+V.Local.sWOSuf.Set(V.Passed.000003)
+F.Intrinsic.String.Concat("WO - Suffix is ",V.Local.sWO,"-",V.Local.sWOSuf,V.Local.sLog)
+F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+'read in the BDF file
+F.Intrinsic.BDF.ReadRowCount(V.Local.sName,V.Local.iRow)
+F.Intrinsic.String.Concat("Row count from BDF ",V.Local.iRow,V.Local.sLog)
+F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+'cycle through the BDF
+Function.Intrinsic.Math.Sub(Variable.Local.iRow, 1, Variable.Local.iRow)
+F.Intrinsic.Control.For(V.Local.iBDFID,0,V.Local.iRow,1)
+	F.Intrinsic.BDF.ReadRow(V.Local.sName,V.Local.iBDFID,V.Local.sRow)
+	F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sRow,"bFirst",False)
+	'split data from the current row
+	F.Intrinsic.String.Split(V.Local.sRow,"|~|",V.Local.sRow)
+	V.Local.iLine.Set(V.Local.sRow(0))
+	V.Local.sPart.Set(V.Local.sRow(1))
+	V.Local.sRev.Set(V.Local.sRow(2))
+	F.Intrinsic.String.GSSPartString(V.Local.sPart,V.Local.sRev,V.Local.sPart)
+	V.Local.sLoc.Set(V.Local.sRow(3))
+	F.Intrinsic.String.RPad(V.Local.sLoc," ",2,V.Local.sLoc)
+	V.Local.sSeq.Set(V.Local.sRow(5))
+	V.Local.sBin.Set(V.Local.sRow(6))
+	F.Intrinsic.String.RPad(V.Local.sBin," ",6,V.Local.sBin)
+	'get the item master information to create the key for the Link
+	'they only link documents on material in sequence 200
+	Function.Intrinsic.Control.If(Variable.Local.sSeq.Long, =, 200)
+		F.Intrinsic.Control.CallSub(Log,"sText","Looking up part info from Item_Master","bFirst",False)
+	'	For some reason the BIN does not get passed onto the grid once they select it. They may run into issues if they have the same part in different bins in the future. 
+	'	F.Intrinsic.String.Concat("Select * from Item_Master where Part='",V.Local.sPart,"' and Location='",V.Local.sLoc,"' and BIN='",V.Local.sBin,"'",V.Local.sSQL)
+	'	F.Intrinsic.String.Concat("Select * from Item_Master where Part='",V.Local.sPart,"' and Location='",V.Local.sLoc,"'",V.Local.sSQL)
+	'	Function.Intrinsic.String.Build("Select * from Item_Master where Part = '{0}' and Location = '{1}'", Variable.Local.sPart, Variable.Local.sLoc, Variable.Local.sSQL)
+		
+		Function.Intrinsic.String.Build("Select * from ITEM_HISTORY where Part = '{0}' and Location = '{1}' and Date_History = '{2}' ", Variable.Local.sPart, Variable.Local.sLoc, Variable.Local.sDate, Variable.Local.sSQL)
+		Function.Intrinsic.String.Build("{0} and JOB = '{1}' and SUFFIX = '{2}' and SEQUENCE = '000200' and CODE_TRANSACTION = 'J55' ", Variable.Local.sSQL, Variable.Local.sWO, Variable.Local.sWOSuf, Variable.Local.sSQL)
+		F.ODBC.Connection!con.OpenRecordsetRO("rstIM",V.Local.sSQL)	
+		F.Intrinsic.Control.If(Variable.ODBC.con!rstIM.EOF, =, True)
+			F.Intrinsic.Control.CallSub(Log,"sText","No Part found in the Item History Master","bFirst",False)	
+			V.Local.sLot.Set("               ")
+			V.Local.sHeat.Set("               ")
+			V.Local.sSerial.Set("                              ")
+			Function.Intrinsic.String.Build("{0}Part {1} was not found in Item History Master. {2}", Variable.Local.sMess, Variable.Local.sPart, Variable.Ambient.NewLine, Variable.Local.sMess)
+		F.Intrinsic.Control.Else
+			Function.Intrinsic.Control.DoUntil(Variable.ODBC.con!rstIM.EOF, =, True)
+				F.Intrinsic.String.Concat("Lot and Bin found for part:",V.Local.sPart," location ",V.Local.sLoc,V.Local.sLog)
+				F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+				V.Local.sLot.Set(V.ODBC.con!rstIM.FieldVal!Lot)
+				F.Intrinsic.String.RPad(V.Local.sLot," ",15,V.Local.sLot)
+				V.Local.sSerial.Set(V.ODBC.con!rstIM.FieldVal!Serial_Number)
+				F.Intrinsic.String.RPad(V.Local.sSerial," ",30,V.Local.sSerial)
+				V.Local.sHeat.Set(V.ODBC.con!rstIM.FieldVal!Heat)
+				F.Intrinsic.String.RPad(V.Local.sHeat," ",15,V.Local.sHeat)
+				Variable.Local.sBin.Set(Variable.ODBC.con!rstIM.FieldVal!BIN)
+				Function.Intrinsic.String.RPad(Variable.Local.sBin, " ", 6, Variable.Local.sBin)
+				
+				'concat the key for the Link Lookup of the Lot/Bin
+				F.Intrinsic.String.Concat(V.Local.sPart,V.Local.sLoc,V.Local.sLot,V.Local.sBin,V.Local.sHeat,V.Local.sSerial,V.Local.sKey)
+				F.Intrinsic.String.Concat("Lot_Bin Key=",V.Local.sKey,V.Local.sLog)
+				F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+				F.Global.DocumentControl.CreateReference(V.Local.sKey,31,V.Local.iLID)
+				'concat the key for the WO Link. Key does not use dash. FEQ revision 10/26/2016
+			'	F.Intrinsic.String.Concat(V.Local.sWO,"-",V.Local.sWOSuf.Trim,V.Local.sWOKey)
+				Function.Intrinsic.String.Build("{0}{1}", Variable.Local.sWO, Variable.Local.sWOSuf.Trim, Variable.Local.sWOKey)
+				F.Intrinsic.String.Concat("WO Key=",V.Local.sWOKey,V.Local.sLog)
+				F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+				F.Global.DocumentControl.CreateReference(V.Local.sWOKey,20,V.Local.iWOID)
+				'copy the information from the Lot/Bin Link to the WO link
+				F.Global.DocumentControl.Copy(V.Local.iLID,V.Local.iWOID,V.Local.bRet)
+				F.Intrinsic.Control.CallSub(Log,"sText","Copied Lot/Bin to WO","bFirst",False)
+				'lookup group
+			'	F.Intrinsic.String.Concat("Select GRP_ID from ATG_DOC_GRP where GRP_Name='","MANUFACTURING REPORT","'",V.Local.sSQL)
+				Variable.Local.sSQL.Set("Select GRP_ID from ATG_DOC_GRP where GRP_NAME = 'MANUFACTURING REPORT' ")
+				F.ODBC.Connection!con.OpenRecordsetRO("rstGrp",V.Local.sSQL)
+				F.Intrinsic.Control.If(V.ODBC.con!rstGrp.EOF,=,False)
+					'update group in the database
+					V.Local.iGrp.Set(V.ODBC.con!rstGrp.FieldVal!GRP_ID)
+					F.Intrinsic.String.Concat("Update ATG_DOC_ASSOC set GRP_ID=",V.Local.iGrp,", where Link_ID=",V.Local.iWOID,"",V.Local.sSQL)
+				F.Intrinsic.Control.EndIf
+				F.ODBC.con!rstGrp.Close
+				F.Intrinsic.Control.If(V.Local.bRet,=,True)
+					'add to a string instead
+					Function.Intrinsic.String.Build("{0}Successful in Copying Lot {1} to Work Order {2} Links. {3}", Variable.Local.sMess, Variable.Local.sLot, Variable.Local.sWO, Variable.Ambient.NewLine, Variable.Local.sMess)
+			'		F.Intrinsic.UI.Msgbox("Succesfully copied Lot/Bin to Work Order Links")
+				F.Intrinsic.Control.Else
+					Function.Intrinsic.String.Build("{0}Unsuccessful in Copying Lot {1} to Work Order {2} Links. {3}", Variable.Local.sMess, Variable.Local.sLot, Variable.Local.sWO, Variable.Ambient.NewLine, Variable.Local.sMess)
+			'		F.Intrinsic.UI.Msgbox("Unsuccessful in copying Lot/Bin to Work Order Links")
+				F.Intrinsic.Control.EndIf
+				Function.ODBC.con!rstIM.MoveNext
+			Function.Intrinsic.Control.Loop	
+		F.Intrinsic.Control.EndIf
+		F.ODBC.con!rstIM.Close
+	Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.iBDFID)
+F.Intrinsic.Control.CallSub(Log,"sText","Process Complete","bFirst",False)
+
+Function.Intrinsic.String.Build("{0}Process Complete", Variable.Local.sMess, Variable.Local.sMess)
+'Print the string.
+Function.Intrinsic.UI.Msgbox(Variable.Local.sMess)
+
+Program.Sub.MTR_old.End
+
+Program.Sub.PassWO.Start
+
+V.Local.iLID.Declare(Long)
+V.Local.iWOID.Declare(Long)
+V.Local.sKey.Declare(String)
+V.Local.iBDFID.Declare(Long)
+V.Local.iRow.Declare(Long)
+V.Local.sName.Declare(String)
+V.Local.sRow.Declare(String)
+V.Local.iLine.Declare(Long)
+V.Local.sPart.Declare(String)
+V.Local.sRev.Declare(String)
+V.Local.sLoc.Declare(String)
+V.Local.sSeq.Declare(String)
+V.Local.sBin.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sLot.Declare(String)
+V.Local.sHeat.Declare(String)
+V.Local.sSerial.Declare(String)
+V.Local.sWO.Declare(String)
+V.Local.sWOSuf.Declare(String)
+V.Local.bRet.Declare(Boolean)
+V.Local.sWOKey.Declare(String)
+V.Local.iGrp.Declare(Long)
+V.Local.sLog.Declare(String)
+Variable.Local.sDate.Declare(String)
+Variable.Local.sMess.Declare(String)
+Variable.Local.sSel.Declare(String)
+
+Variable.Local.sDate.Set(Variable.Ambient.Date.FormatYYMMDD)
+'F.Intrinsic.Debug.InvokeDebugger
+V.Local.sName.Set("Issue")
+F.Intrinsic.Control.CallSub(Log,"sText","Starting the Process to copy Lot Bin to WO","bFirst",True)
+F.Intrinsic.Control.CallSub(Log,"sText","Version 1","bFirst",False)
+'get information passed from the screen
+F.Intrinsic.Control.CallSub(Log,"sText",V.Passed.AUX001,"bFirst",False)
+F.Intrinsic.BDF.Load(V.Local.sName,"AUX001")
+F.Intrinsic.Control.CallSub(Log,"sText","BDF File has been loaded","bFirst",False)
+V.Local.sWO.Set(V.Passed.WORK-ORDER)
+V.Local.sWOSuf.Set(V.Passed.SUFFIX)
+F.Intrinsic.String.Concat("WO - Suffix is ",V.Local.sWO,"-",V.Local.sWOSuf,V.Local.sLog)
+F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+V.Local.sPart.Set(Variable.Passed.000001)
+V.Local.sRev.Set(Variable.Passed.000002)
+V.Local.sLoc.Set(Variable.Passed.000003)
+F.Intrinsic.String.LPad(V.Local.sLoc, " ", 2, V.Local.sLoc)
+F.Intrinsic.String.GSSPartString(V.Local.sPart, V.Local.sRev, V.Local.sPart)
+'read in the BDF file
+F.Intrinsic.BDF.ReadRowCount(V.Local.sName,V.Local.iRow)
+F.Intrinsic.String.Concat("Row count from BDF ",V.Local.iRow,V.Local.sLog)
+F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+'cycle through the BDF
+Function.Intrinsic.Math.Sub(Variable.Local.iRow, 1, Variable.Local.iRow)
+F.Intrinsic.Control.For(V.Local.iBDFID,0,V.Local.iRow,1)
+	F.Intrinsic.BDF.ReadRow(V.Local.sName,V.Local.iBDFID,V.Local.sRow)
+	F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sRow,"bFirst",False)
+	'split data from the current row
+	F.Intrinsic.String.Split(V.Local.sRow,"|~|",V.Local.sRow)
+	Variable.Local.sSel.Set(Variable.Local.sRow(0))
+	F.Intrinsic.Control.If(Variable.Local.sSel, =, "Y")
+		V.Local.sLot.Set(Variable.Local.sRow(2))
+		V.Local.sBin.Set(Variable.Local.sRow(3))
+		V.Local.sHeat.Set(Variable.Local.sRow(4))
+		V.Local.sSerial.Set(Variable.Local.sRow(5))
+		F.Intrinsic.String.RPad(V.Local.sBin," ",6,V.Local.sBin)
+		F.Intrinsic.String.RPad(V.Local.sLot," ",15,V.Local.sLot)
+		F.Intrinsic.String.RPad(V.Local.sSerial," ",30,V.Local.sSerial)
+		F.Intrinsic.String.RPad(V.Local.sHeat," ",15,V.Local.sHeat)
+		F.Intrinsic.String.Concat("Lot and Bin found for part:",V.Local.sPart," location ",V.Local.sLoc,V.Local.sLog)
+		F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+		'concat the key for the Link Lookup of the Lot/Bin
+		F.Intrinsic.String.Concat(V.Local.sPart,V.Local.sLoc,V.Local.sLot,V.Local.sBin,V.Local.sHeat,V.Local.sSerial,V.Local.sKey)
+		F.Intrinsic.String.Concat("Lot_Bin Key=",V.Local.sKey,V.Local.sLog)
+		F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+		F.Global.DocumentControl.CreateReference(V.Local.sKey,31,V.Local.iLID)
+		'concat the key for the WO Link. Key does not use dash. FEQ revision 10/26/2016
+		Function.Intrinsic.String.Build("{0}{1}", Variable.Local.sWO, Variable.Local.sWOSuf.Trim, Variable.Local.sWOKey)
+		F.Intrinsic.String.Concat("WO Key=",V.Local.sWOKey,V.Local.sLog)
+		F.Intrinsic.Control.CallSub(Log,"sText",V.Local.sLog,"bFirst",False)
+		F.Global.DocumentControl.CreateReference(V.Local.sWOKey,20,V.Local.iWOID)
+		'copy the information from the Lot/Bin Link to the WO link
+		F.Global.DocumentControl.Copy(V.Local.iLID,V.Local.iWOID,V.Local.bRet)
+		F.Intrinsic.Control.CallSub(Log,"sText","Copied Lot/Bin to WO","bFirst",False)
+		'lookup group
+		Variable.Local.sSQL.Set("Select GRP_ID from ATG_DOC_GRP where GRP_NAME = 'MANUFACTURING REPORT' ")
+		F.ODBC.Connection!con.OpenRecordsetRO("rstGrp",V.Local.sSQL)
+		F.Intrinsic.Control.If(V.ODBC.con!rstGrp.EOF,=,False)
+			'update group in the database
+			V.Local.iGrp.Set(V.ODBC.con!rstGrp.FieldVal!GRP_ID)
+			F.Intrinsic.String.Concat("Update ATG_DOC_ASSOC set GRP_ID=",V.Local.iGrp," where Link_ID=",V.Local.iWOID,"",V.Local.sSQL)
+			F.ODBC.Connection!con.Execute(Variable.Local.sSQL)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.con!rstGrp.Close
+		F.Intrinsic.Control.If(V.Local.bRet,=,True)
+			'add to a string instead
+			Function.Intrinsic.String.Build("{0}Successful in Copying Lot {1} to Work Order {2} Links. {3}", Variable.Local.sMess, Variable.Local.sLot, Variable.Local.sWO, Variable.Ambient.NewLine, Variable.Local.sMess)
+		F.Intrinsic.Control.Else
+			Function.Intrinsic.String.Build("{0}Unsuccessful in Copying Lot {1} to Work Order {2} Links. {3}", Variable.Local.sMess, Variable.Local.sLot, Variable.Local.sWO, Variable.Ambient.NewLine, Variable.Local.sMess)
+		F.Intrinsic.Control.EndIf
+	Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.iBDFID)
+F.Intrinsic.Control.CallSub(Log,"sText","Process Complete","bFirst",False)
+
+Function.Intrinsic.String.Build("{0}Process Complete", Variable.Local.sMess, Variable.Local.sMess)
+'Print the string.
+Function.Intrinsic.UI.Msgbox(Variable.Local.sMess)
+
+Program.Sub.PassWO.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$$}$12:00:00 AM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Maintenance Program that is described in quote 5491.
+
+Program.Sub.Comments.End
